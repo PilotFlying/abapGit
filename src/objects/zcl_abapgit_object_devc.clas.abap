@@ -403,7 +403,7 @@ CLASS zcl_abapgit_object_devc IMPLEMENTATION.
               intern_err            = 4
               OTHERS                = 5.
 
-        CATCH cx_root.
+        CATCH cx_sy_dyn_call_param_not_found.
 
           li_package->delete(
             EXCEPTIONS
@@ -419,18 +419,32 @@ CLASS zcl_abapgit_object_devc IMPLEMENTATION.
         zcx_abapgit_exception=>raise_t100( ).
       ENDIF.
 
-      li_package->save(
-        EXPORTING
-          i_suppress_dialog     = abap_true
-        EXCEPTIONS
-          object_invalid        = 1
-          object_not_changeable = 2
-          cancelled_in_corr     = 3
-          permission_failure    = 4
-          unexpected_error      = 5
-          intern_err            = 6
-          OTHERS                = 7 ).
+      TRY.
+          CALL METHOD li_package->('SAVE')
+            EXPORTING
+              i_suppress_dialog     = abap_true
+            EXCEPTIONS
+              object_invalid        = 1
+              object_not_changeable = 2
+              cancelled_in_corr     = 3
+              permission_failure    = 4
+              unexpected_error      = 5
+              intern_err            = 6
+              OTHERS                = 7.
 
+        CATCH cx_sy_dyn_call_param_not_found.
+
+          li_package->save(
+            EXCEPTIONS
+              object_invalid        = 1
+              object_not_changeable = 2
+              cancelled_in_corr     = 3
+              permission_failure    = 4
+              unexpected_error      = 5
+              intern_err            = 6
+              OTHERS                = 7 ).
+
+      ENDTRY.
       IF sy-subrc <> 0.
         zcx_abapgit_exception=>raise_t100( ).
       ENDIF.
@@ -462,7 +476,9 @@ CLASS zcl_abapgit_object_devc IMPLEMENTATION.
 
     " Swap out repository package name with the local installation package name
     ls_package_data-devclass = mv_local_devclass.
-    ls_package_data-pdevclass = li_package->transport_layer.
+    IF li_package IS BOUND.
+      ls_package_data-pdevclass = li_package->transport_layer.
+    ENDIF.
 
     " Parent package is not changed. Assume the folder logic already created the package and set
     " the hierarchy before.

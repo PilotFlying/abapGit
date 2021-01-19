@@ -46,6 +46,11 @@ CLASS zcl_abapgit_gui_page_stage DEFINITION
     DATA mv_seed TYPE string .             " Unique page id to bind JS sessionStorage
     DATA mv_filter_value TYPE string .
 
+    METHODS check_selected
+      IMPORTING
+        !io_files TYPE REF TO zcl_abapgit_string_map
+      RAISING
+        zcx_abapgit_exception .
     METHODS find_changed_by
       IMPORTING
         !it_files            TYPE zif_abapgit_definitions=>ty_stage_files
@@ -151,6 +156,43 @@ CLASS zcl_abapgit_gui_page_stage IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD check_selected.
+
+    DATA:
+      ls_file    TYPE zif_abapgit_definitions=>ty_file,
+      lv_pattern TYPE string,
+      lv_msg     TYPE string.
+
+    FIELD-SYMBOLS:
+      <ls_item>     LIKE LINE OF io_files->mt_entries,
+      <ls_item_chk> LIKE LINE OF io_files->mt_entries.
+
+    " Check all added files if the exist in different paths (packages) without being removed
+    LOOP AT io_files->mt_entries ASSIGNING <ls_item> WHERE v = zif_abapgit_definitions=>c_method-add.
+
+      zcl_abapgit_path=>split_file_location(
+        EXPORTING
+          iv_fullpath = to_lower( <ls_item>-k )
+        IMPORTING
+          ev_path     = ls_file-path
+          ev_filename = ls_file-filename ).
+
+      lv_pattern = '*/' && to_upper( ls_file-filename ).
+      REPLACE ALL OCCURRENCES OF '#' IN lv_pattern WITH '##'. " for CP
+
+      LOOP AT io_files->mt_entries ASSIGNING <ls_item_chk>
+        WHERE k CP lv_pattern AND k <> <ls_item>-k AND v <> zif_abapgit_definitions=>c_method-rm.
+
+        lv_msg = |In order to add { to_lower( <ls_item>-k ) }, | &&
+                 |you have to remove { to_lower( <ls_item_chk>-k ) }|.
+        zcx_abapgit_exception=>raise( lv_msg ).
+
+      ENDLOOP.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
   METHOD constructor.
 
     DATA lv_ts TYPE timestamp.
@@ -167,7 +209,7 @@ CLASS zcl_abapgit_gui_page_stage IMPLEMENTATION.
       mv_seed = |stage{ lv_ts }|.
     ENDIF.
 
-    ms_control-page_menu  = build_menu( ).
+    ms_control-page_menu = build_menu( ).
 
     IF lines( ms_files-local ) = 0 AND lines( ms_files-remote ) = 0.
       zcx_abapgit_exception=>raise( 'There are no changes that could be staged' ).
@@ -263,9 +305,6 @@ CLASS zcl_abapgit_gui_page_stage IMPLEMENTATION.
 
 
   METHOD find_transports.
-
-    FIELD-SYMBOLS: <ls_local> LIKE LINE OF it_files-local.
-    FIELD-SYMBOLS: <ls_remote> LIKE LINE OF it_files-remote.
 
     TRY.
 
@@ -738,6 +777,8 @@ CLASS zcl_abapgit_gui_page_stage IMPLEMENTATION.
     IF lo_files->size( ) = 0.
       zcx_abapgit_exception=>raise( 'process_stage_list: empty list' ).
     ENDIF.
+
+    check_selected( lo_files ).
 
     CREATE OBJECT ro_stage.
 
